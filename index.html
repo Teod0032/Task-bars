@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>My Tasks</title>
+    
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="mobile-web-app-capable" content="yes">
+    
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,18 +17,9 @@
     
     <style>
         body { background-color: #ffffff; -webkit-tap-highlight-color: transparent; }
-        /* Hide scrollbar for clean look */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        .column-width { width: 160px; min-width: 160px; }
-        .row-height { height: 70px; }
-        .header-height { height: 60px; }
-        
-        /* Smooth transitions */
         .task-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        
-        /* Custom shadows to match React Native elevation */
         .shadow-elevation { box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); }
         .shadow-floating { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
     </style>
@@ -31,24 +27,24 @@
 <body>
     <div id="root"></div>
 
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js')
+                .then(() => console.log('Service Worker Registered'))
+                .catch((err) => console.log('SW Failed', err));
+        }
+    </script>
+
     <script type="text/babel">
-        const { useState, useEffect, useMemo, useRef } = React;
-        
-        // --- Icons Component ---
-        const Icon = ({ name, size = 24, color = "currentColor", ...props }) => {
-            useEffect(() => {
-                lucide.createIcons();
-            }, [name]);
-            return <i data-lucide={name} style={{ width: size, height: size, color: color }} {...props}></i>;
+        const { useState, useEffect, useMemo } = React;
+        const Icon = ({ name, size = 24, color = "currentColor" }) => {
+            useEffect(() => { lucide.createIcons(); }, [name]);
+            return <i data-lucide={name} style={{ width: size, height: size, color: color }}></i>;
         };
 
-        // --- Constants ---
         const COLUMN_WIDTH = 160;
         const ROW_HEIGHT = 70;
         const HEADER_HEIGHT = 60;
-        const INITIAL_DAYS = 60;
-        const LOAD_BATCH_SIZE = 30;
-
         const COLOR_LEVELS = {
             level1: { bg: '#fecdd3', text: '#881337', border: '#fda4af', priority: 1 },
             level2: { bg: '#ffccbc', text: '#bf360c', border: '#ffab91', priority: 2 },
@@ -60,17 +56,6 @@
             level8: { bg: '#bbf7d0', text: '#14532d', border: '#86efac', priority: 8 },
         };
 
-        // --- Helpers ---
-        const formatToInputDate = (d) => d ? d.toISOString().split('T')[0] : '';
-        const normalizeDate = (d) => {
-            const date = new Date(d);
-            return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-        };
-        const getDayDiff = (d1, d2) => Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
-        const getTaskPriority = (color) => COLOR_LEVELS[color]?.priority || 99;
-
-        // --- Components ---
-
         const TaskBar = ({ task, layout, onToggle, onClick, isRearrangeMode, onMove }) => {
             const colors = COLOR_LEVELS[task.color] || COLOR_LEVELS.level3;
             const top = layout.gridRow * ROW_HEIGHT + HEADER_HEIGHT + 10;
@@ -78,39 +63,15 @@
             const width = Math.max((layout.gridSpan || 1) * COLUMN_WIDTH - 16, 40);
 
             return (
-                <div 
-                    onClick={() => onClick(task)}
-                    className={`absolute task-card rounded-xl border-l-4 flex items-center justify-between shadow-elevation overflow-hidden cursor-pointer select-none ${task.completed ? 'opacity-60' : 'opacity-100'}`}
-                    style={{
-                        top: `${top}px`,
-                        left: `${left}px`,
-                        width: `${width}px`,
-                        height: '55px',
-                        backgroundColor: colors.bg,
-                        borderColor: colors.border,
-                        zIndex: 10
-                    }}
-                >
+                <div onClick={() => onClick(task)} className={`absolute task-card rounded-xl border-l-4 flex items-center justify-between shadow-elevation overflow-hidden cursor-pointer select-none ${task.completed ? 'opacity-60' : 'opacity-100'}`} style={{ top: `${top}px`, left: `${left}px`, width: `${width}px`, height: '55px', backgroundColor: colors.bg, borderColor: colors.border, zIndex: 10 }}>
                     <div className="flex items-center px-3 w-full h-full">
-                        {!isRearrangeMode && (
-                            <div 
-                                onClick={(e) => { e.stopPropagation(); onToggle(task); }}
-                                className="w-12 h-7 rounded-full bg-white mr-3 shadow-sm flex-shrink-0"
-                            ></div>
-                        )}
-                        <span className="font-semibold text-base truncate" style={{ color: colors.text }}>
-                            {task.title}
-                        </span>
+                        {!isRearrangeMode && <div onClick={(e) => { e.stopPropagation(); onToggle(task); }} className="w-12 h-7 rounded-full bg-white mr-3 shadow-sm flex-shrink-0"></div>}
+                        <span className="font-semibold text-base truncate" style={{ color: colors.text }}>{task.title}</span>
                     </div>
-
                     {isRearrangeMode && (
                         <div className="absolute right-0 top-0 bottom-0 w-10 flex flex-col bg-black/5 backdrop-blur-[1px]">
-                            <button onClick={(e) => { e.stopPropagation(); onMove(task, -1); }} className="flex-1 flex items-center justify-center hover:bg-black/10">
-                                <span className="text-gray-700 text-xs">▲</span>
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); onMove(task, 1); }} className="flex-1 flex items-center justify-center hover:bg-black/10">
-                                <span className="text-gray-500 text-xs">▼</span>
-                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); onMove(task, -1); }} className="flex-1 flex items-center justify-center hover:bg-black/10"><span className="text-gray-700 text-xs">▲</span></button>
+                            <button onClick={(e) => { e.stopPropagation(); onMove(task, 1); }} className="flex-1 flex items-center justify-center hover:bg-black/10"><span className="text-gray-500 text-xs">▼</span></button>
                         </div>
                     )}
                 </div>
@@ -119,7 +80,6 @@
 
         const TaskModal = ({ visible, onClose, onSave, onDelete, taskToEdit, defaultStartDate }) => {
             if (!visible) return null;
-
             const [title, setTitle] = useState('');
             const [color, setColor] = useState('level3');
             const [start, setStart] = useState('');
@@ -127,85 +87,30 @@
 
             useEffect(() => {
                 if (taskToEdit) {
-                    setTitle(taskToEdit.title);
-                    setColor(taskToEdit.color || 'level3');
-                    setStart(taskToEdit.startDate.split('T')[0]);
-                    setEnd(taskToEdit.endDate.split('T')[0]);
+                    setTitle(taskToEdit.title); setColor(taskToEdit.color || 'level3'); setStart(taskToEdit.startDate.split('T')[0]); setEnd(taskToEdit.endDate.split('T')[0]);
                 } else {
-                    setTitle('');
-                    setColor('level3');
-                    const d = defaultStartDate || new Date().toISOString().split('T')[0];
-                    setStart(d);
-                    setEnd(d);
+                    setTitle(''); setColor('level3'); const d = defaultStartDate || new Date().toISOString().split('T')[0]; setStart(d); setEnd(d);
                 }
             }, [visible, taskToEdit, defaultStartDate]);
 
             const handleSave = () => {
                 if (!title.trim() || !start || !end) return;
                 if (new Date(end) < new Date(start)) return alert("End date cannot be before start date");
-                onSave({ title, color, startDate: new Date(start).toISOString(), endDate: new Date(end).toISOString() });
-                onClose();
+                onSave({ title, color, startDate: new Date(start).toISOString(), endDate: new Date(end).toISOString() }); onClose();
             };
 
             return (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
                     <div className="bg-white w-full sm:w-96 rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up">
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold">{taskToEdit ? 'Edit Task' : 'New Task'}</h2>
-                            <button onClick={onClose} className="p-2 bg-gray-100 rounded-full"><Icon name="x" size={20}/></button>
-                        </div>
-                        
-                        <div className="mb-4">
-                            <label className="text-xs font-bold text-gray-400 uppercase block mb-2">Task Name</label>
-                            <input 
-                                className="w-full bg-gray-50 p-4 rounded-xl text-lg outline-none focus:ring-2 focus:ring-blue-500" 
-                                placeholder="e.g. Project Sprint" 
-                                value={title} 
-                                onChange={e => setTitle(e.target.value)} 
-                            />
-                        </div>
-
-                        <div className="flex gap-3 mb-4">
-                            <div className="flex-1">
-                                <label className="text-xs font-bold text-gray-400 uppercase block mb-2">Start</label>
-                                <input type="date" className="w-full bg-gray-50 p-3 rounded-xl outline-none" value={start} onChange={e => setStart(e.target.value)} />
-                            </div>
-                            <div className="flex-1">
-                                <label className="text-xs font-bold text-gray-400 uppercase block mb-2">End</label>
-                                <input type="date" className="w-full bg-gray-50 p-3 rounded-xl outline-none" value={end} onChange={e => setEnd(e.target.value)} />
-                            </div>
-                        </div>
-
-                        <div className="mb-6">
-                            <label className="text-xs font-bold text-gray-400 uppercase block mb-2">Priority Color</label>
-                            <div className="flex justify-between mt-2">
-                                {Object.keys(COLOR_LEVELS).map(c => (
-                                    <button 
-                                        key={c} 
-                                        onClick={() => setColor(c)}
-                                        className={`w-8 h-8 rounded-full border-4 transition-transform ${color === c ? 'border-gray-800 scale-110' : 'border-transparent'}`}
-                                        style={{ backgroundColor: COLOR_LEVELS[c].bg }}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col gap-3">
-                            <button onClick={handleSave} className="w-full bg-gray-900 text-white p-4 rounded-xl font-bold text-lg active:scale-95 transition-transform">
-                                {taskToEdit ? 'Save Changes' : 'Add to Plan'}
-                            </button>
-                            {taskToEdit && (
-                                <button onClick={() => { onDelete(taskToEdit.id); onClose(); }} className="w-full bg-red-50 text-red-600 p-4 rounded-xl font-bold border border-red-100 active:scale-95 transition-transform">
-                                    Delete Task
-                                </button>
-                            )}
-                        </div>
+                        <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold">{taskToEdit ? 'Edit Task' : 'New Task'}</h2><button onClick={onClose} className="p-2 bg-gray-100 rounded-full"><Icon name="x" size={20}/></button></div>
+                        <div className="mb-4"><label className="text-xs font-bold text-gray-400 uppercase block mb-2">Task Name</label><input className="w-full bg-gray-50 p-4 rounded-xl text-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. Project Sprint" value={title} onChange={e => setTitle(e.target.value)} /></div>
+                        <div className="flex gap-3 mb-4"><div className="flex-1"><label className="text-xs font-bold text-gray-400 uppercase block mb-2">Start</label><input type="date" className="w-full bg-gray-50 p-3 rounded-xl outline-none" value={start} onChange={e => setStart(e.target.value)} /></div><div className="flex-1"><label className="text-xs font-bold text-gray-400 uppercase block mb-2">End</label><input type="date" className="w-full bg-gray-50 p-3 rounded-xl outline-none" value={end} onChange={e => setEnd(e.target.value)} /></div></div>
+                        <div className="mb-6"><label className="text-xs font-bold text-gray-400 uppercase block mb-2">Priority Color</label><div className="flex justify-between mt-2">{Object.keys(COLOR_LEVELS).map(c => (<button key={c} onClick={() => setColor(c)} className={`w-8 h-8 rounded-full border-4 transition-transform ${color === c ? 'border-gray-800 scale-110' : 'border-transparent'}`} style={{ backgroundColor: COLOR_LEVELS[c].bg }} />))}</div></div>
+                        <div className="flex flex-col gap-3"><button onClick={handleSave} className="w-full bg-gray-900 text-white p-4 rounded-xl font-bold text-lg active:scale-95 transition-transform">{taskToEdit ? 'Save Changes' : 'Add to Plan'}</button>{taskToEdit && ( <button onClick={() => { onDelete(taskToEdit.id); onClose(); }} className="w-full bg-red-50 text-red-600 p-4 rounded-xl font-bold border border-red-100 active:scale-95 transition-transform">Delete Task</button> )}</div>
                     </div>
                 </div>
             );
         };
-
-        // --- Main App ---
 
         const App = () => {
             const [tasks, setTasks] = useState([]);
@@ -213,236 +118,99 @@
             const [editingTask, setEditingTask] = useState(null);
             const [activeTag, setActiveTag] = useState('Work');
             const [isRearrangeMode, setIsRearrangeMode] = useState(false);
-            const [visibleDays, setVisibleDays] = useState(INITIAL_DAYS);
+            const [visibleDays, setVisibleDays] = useState(60);
             const [selectedDate, setSelectedDate] = useState('');
 
-            // Load/Save
-            useEffect(() => {
-                const saved = localStorage.getItem('my-tasks');
-                if (saved) setTasks(JSON.parse(saved));
-            }, []);
-            useEffect(() => {
-                localStorage.setItem('my-tasks', JSON.stringify(tasks));
-            }, [tasks]);
+            useEffect(() => { const saved = localStorage.getItem('my-tasks'); if (saved) setTasks(JSON.parse(saved)); }, []);
+            useEffect(() => { localStorage.setItem('my-tasks', JSON.stringify(tasks)); }, [tasks]);
 
-            // Dates Setup
             const today = useMemo(() => new Date(), []);
-            const days = useMemo(() => {
-                return Array.from({ length: visibleDays }, (_, i) => {
-                    const date = new Date(today);
-                    date.setDate(today.getDate() + i);
-                    return {
-                        id: date.toISOString().split('T')[0],
-                        label: i === 0 ? 'Now' : date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-                        dateObj: date
-                    };
-                });
-            }, [visibleDays]);
+            const days = useMemo(() => Array.from({ length: visibleDays }, (_, i) => {
+                const date = new Date(today); date.setDate(today.getDate() + i);
+                return { id: date.toISOString().split('T')[0], label: i === 0 ? 'Now' : date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), dateObj: date };
+            }), [visibleDays]);
 
-            // Layout Engine
+            const normalizeDate = (d) => { const date = new Date(d); return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())); };
+            const getDayDiff = (d1, d2) => Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+            const getTaskPriority = (color) => COLOR_LEVELS[color]?.priority || 99;
+
             const layoutTasks = useMemo(() => {
                 const now = normalizeDate(new Date());
                 const filtered = tasks.filter(t => t.tag === activeTag && (normalizeDate(t.endDate) >= now || t.completed));
-                
-                // Group by Priority
                 const groups = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [], 8: [], 99: [] };
-                filtered.forEach(t => {
-                    const p = COLOR_LEVELS[t.color]?.priority || 99;
-                    groups[p].push(t);
-                });
-
+                filtered.forEach(t => { const p = COLOR_LEVELS[t.color]?.priority || 99; groups[p].push(t); });
                 const positioned = [];
                 const nextRows = new Array(days.length).fill(0);
                 let globalOffset = 0;
-
                 Object.keys(groups).sort((a,b) => a-b).forEach(level => {
-                    const group = groups[level];
-                    if(!group.length) return;
-                    
+                    const group = groups[level]; if(!group.length) return;
                     group.sort((a,b) => (a.manualSortIndex || 0) - (b.manualSortIndex || 0));
                     const groupRows = [];
-
                     group.forEach(task => {
-                        const start = normalizeDate(task.startDate);
-                        const end = normalizeDate(task.endDate);
-                        const viewStart = normalizeDate(days[0].dateObj);
-
-                        let col = getDayDiff(viewStart, start) + 1;
-                        if(start < viewStart) col = -getDayDiff(start, viewStart) + 1;
+                        const start = normalizeDate(task.startDate); const end = normalizeDate(task.endDate); const viewStart = normalizeDate(days[0].dateObj);
+                        let col = getDayDiff(viewStart, start) + 1; if(start < viewStart) col = -getDayDiff(start, viewStart) + 1;
                         const span = Math.max(1, getDayDiff(start, end) + 1);
-
                         let row = 0;
                         while(true) {
                             if(!groupRows[row]) { groupRows[row] = []; break; }
                             const collision = groupRows[row].some(slot => col < slot.end && (col + span) > slot.start);
-                            if(!collision) break;
-                            row++;
+                            if(!collision) break; row++;
                         }
-                        if(!groupRows[row]) groupRows[row] = [];
-                        groupRows[row].push({ start: col, end: col + span });
-
+                        if(!groupRows[row]) groupRows[row] = []; groupRows[row].push({ start: col, end: col + span });
                         const finalRow = globalOffset + row;
-                        
-                        // Update column height markers
-                        const sIdx = Math.max(0, col - 1);
-                        const eIdx = Math.min(days.length, col - 1 + span);
+                        const sIdx = Math.max(0, col - 1); const eIdx = Math.min(days.length, col - 1 + span);
                         for(let k=sIdx; k<eIdx; k++) nextRows[k] = Math.max(nextRows[k], finalRow + 1);
-
                         positioned.push({ ...task, gridCol: col, gridSpan: span, gridRow: finalRow });
                     });
                     globalOffset += groupRows.length;
                 });
-
                 return { positioned, nextRows };
             }, [tasks, activeTag, days]);
 
-            const overdueTasks = useMemo(() => {
-                const now = normalizeDate(new Date());
-                return tasks.filter(t => t.tag === activeTag && normalizeDate(t.endDate) < now && !t.completed);
-            }, [tasks, activeTag]);
+            const overdueTasks = useMemo(() => { const now = normalizeDate(new Date()); return tasks.filter(t => t.tag === activeTag && normalizeDate(t.endDate) < now && !t.completed); }, [tasks, activeTag]);
 
-            // Handlers
             const handleSave = (data) => {
-                const newTask = { 
-                    id: Date.now().toString(), 
-                    ...data, 
-                    completed: false, 
-                    tag: activeTag, 
-                    manualSortIndex: Date.now() 
-                };
-                if(editingTask) {
-                    setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...data } : t));
-                } else {
-                    setTasks(prev => [...prev, newTask]);
-                }
+                const newTask = { id: Date.now().toString(), ...data, completed: false, tag: activeTag, manualSortIndex: Date.now() };
+                if(editingTask) setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...data } : t)); else setTasks(prev => [...prev, newTask]);
             };
-
-            const handleToggle = (task) => {
-                if(confirm("Complete this task?")) {
-                    setTasks(prev => prev.filter(t => t.id !== task.id));
-                }
-            };
-            
+            const handleToggle = (task) => { if(confirm("Complete this task?")) setTasks(prev => prev.filter(t => t.id !== task.id)); };
             const handleMove = (task, dir) => {
-                const relevant = tasks.filter(t => t.tag === activeTag).sort((a,b) => {
-                    const pA = getTaskPriority(a.color);
-                    const pB = getTaskPriority(b.color);
-                    return pA === pB ? (a.manualSortIndex||0) - (b.manualSortIndex||0) : pA - pB;
-                });
-                
+                const relevant = tasks.filter(t => t.tag === activeTag).sort((a,b) => { const pA = getTaskPriority(a.color); const pB = getTaskPriority(b.color); return pA === pB ? (a.manualSortIndex||0) - (b.manualSortIndex||0) : pA - pB; });
                 const idx = relevant.findIndex(t => t.id === task.id);
                 if(idx === -1 || !relevant[idx + dir]) return;
-                
                 const neighbor = relevant[idx + dir];
-                // Swap Priority Color & Sort Index
-                const tColor = task.color; const tIdx = task.manualSortIndex;
-                const nColor = neighbor.color; const nIdx = neighbor.manualSortIndex;
-
-                setTasks(prev => prev.map(t => {
-                    if(t.id === task.id) return { ...t, color: nColor, manualSortIndex: nIdx };
-                    if(t.id === neighbor.id) return { ...t, color: tColor, manualSortIndex: tIdx };
-                    return t;
-                }));
+                const tColor = task.color; const tIdx = task.manualSortIndex; const nColor = neighbor.color; const nIdx = neighbor.manualSortIndex;
+                setTasks(prev => prev.map(t => { if(t.id === task.id) return { ...t, color: nColor, manualSortIndex: nIdx }; if(t.id === neighbor.id) return { ...t, color: tColor, manualSortIndex: tIdx }; return t; }));
             };
 
             return (
                 <div className="flex flex-col h-screen bg-white">
-                    {/* Header */}
                     <div className="px-6 pb-4 pt-10 border-b border-gray-100 flex justify-between items-end bg-white sticky top-0 z-40">
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-900">Today</h1>
-                            <p className="text-gray-400 font-medium text-sm">{today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric'})}</p>
-                        </div>
+                        <div><h1 className="text-2xl font-bold text-gray-900">Today</h1><p className="text-gray-400 font-medium text-sm">{today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric'})}</p></div>
                     </div>
-
-                    {/* Overdue */}
                     {overdueTasks.length > 0 && (
                         <div className="bg-red-50 border-b border-red-100 p-4">
-                            <div className="flex items-center mb-2 text-red-700 font-bold gap-2">
-                                <Icon name="alert-circle" size={18} />
-                                <span>Past Due: {overdueTasks.length}</span>
-                            </div>
-                            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
-                                {overdueTasks.map(t => (
-                                    <div key={t.id} onClick={() => { setEditingTask(t); setModalVisible(true); }} className="flex-shrink-0 bg-white border border-red-200 rounded-lg p-3 w-64 shadow-sm flex items-center gap-3">
-                                        <div onClick={(e) => { e.stopPropagation(); handleToggle(t); }} className="w-5 h-5 rounded-full border-2 border-red-500"></div>
-                                        <div>
-                                            <p className="font-semibold text-red-900 truncate w-40">{t.title}</p>
-                                            <p className="text-xs text-red-500 font-bold">{t.endDate.split('T')[0]}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                            <div className="flex items-center mb-2 text-red-700 font-bold gap-2"><Icon name="alert-circle" size={18} /><span>Past Due: {overdueTasks.length}</span></div>
+                            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">{overdueTasks.map(t => ( <div key={t.id} onClick={() => { setEditingTask(t); setModalVisible(true); }} className="flex-shrink-0 bg-white border border-red-200 rounded-lg p-3 w-64 shadow-sm flex items-center gap-3"><div onClick={(e) => { e.stopPropagation(); handleToggle(t); }} className="w-5 h-5 rounded-full border-2 border-red-500"></div><div><p className="font-semibold text-red-900 truncate w-40">{t.title}</p><p className="text-xs text-red-500 font-bold">{t.endDate.split('T')[0]}</p></div></div> ))}</div>
                         </div>
                     )}
-
-                    {/* Timeline Grid */}
-                    <div className="flex-1 overflow-x-auto overflow-y-hidden relative no-scrollbar" onScroll={(e) => {
-                         if(e.target.scrollWidth - e.target.scrollLeft - e.target.clientWidth < 400) setVisibleDays(prev => prev + 10);
-                    }}>
+                    <div className="flex-1 overflow-x-auto overflow-y-hidden relative no-scrollbar" onScroll={(e) => { if(e.target.scrollWidth - e.target.scrollLeft - e.target.clientWidth < 400) setVisibleDays(prev => prev + 10); }}>
                         <div className="flex h-full relative" style={{ width: days.length * COLUMN_WIDTH }}>
-                            {/* Columns */}
                             {days.map((day, i) => (
                                 <div key={day.id} className={`flex-shrink-0 border-r border-gray-100 h-full relative ${i%2===0 ? 'bg-gray-50/50' : 'bg-white'}`} style={{ width: COLUMN_WIDTH }}>
-                                    <div className="h-[60px] flex items-center pl-4 border-b border-gray-200 sticky top-0 bg-white/95 backdrop-blur z-20 font-semibold text-gray-500 text-sm">
-                                        {day.label}
-                                    </div>
-                                    <button 
-                                        onClick={() => { setSelectedDate(day.id); setEditingTask(null); setModalVisible(true); }}
-                                        className="absolute left-0 right-0 flex justify-center pt-2 hover:opacity-100 opacity-0 transition-opacity"
-                                        style={{ top: (layoutTasks.nextRows[i] || 0) * ROW_HEIGHT + HEADER_HEIGHT + 20 }}
-                                    >
-                                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">+</div>
-                                    </button>
+                                    <div className="h-[60px] flex items-center pl-4 border-b border-gray-200 sticky top-0 bg-white/95 backdrop-blur z-20 font-semibold text-gray-500 text-sm">{day.label}</div>
+                                    <button onClick={() => { setSelectedDate(day.id); setEditingTask(null); setModalVisible(true); }} className="absolute left-0 right-0 flex justify-center pt-2 hover:opacity-100 opacity-0 transition-opacity" style={{ top: (layoutTasks.nextRows[i] || 0) * ROW_HEIGHT + HEADER_HEIGHT + 20 }}><div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">+</div></button>
                                 </div>
                             ))}
-
-                            {/* Tasks */}
-                            {layoutTasks.positioned.map(task => {
-                                if(task.gridCol + task.gridSpan < 1) return null;
-                                return (
-                                    <TaskBar 
-                                        key={task.id} 
-                                        task={task} 
-                                        layout={task} 
-                                        onToggle={handleToggle}
-                                        onClick={(t) => { setEditingTask(t); setModalVisible(true); }}
-                                        isRearrangeMode={isRearrangeMode}
-                                        onMove={handleMove}
-                                    />
-                                );
-                            })}
+                            {layoutTasks.positioned.map(task => { if(task.gridCol + task.gridSpan < 1) return null; return ( <TaskBar key={task.id} task={task} layout={task} onToggle={handleToggle} onClick={(t) => { setEditingTask(t); setModalVisible(true); }} isRearrangeMode={isRearrangeMode} onMove={handleMove} /> ); })}
                         </div>
                     </div>
-
-                    {/* Floating Controls */}
-                    <button 
-                        onClick={() => isRearrangeMode ? setIsRearrangeMode(false) : setActiveTag(tag => tag === 'Work' ? 'Personal' : 'Work')}
-                        onContextMenu={(e) => { e.preventDefault(); setIsRearrangeMode(true); }}
-                        className={`absolute bottom-8 left-8 px-6 py-3 rounded-2xl font-bold shadow-floating transition-colors z-30 ${isRearrangeMode ? 'bg-purple-600 text-white' : 'bg-blue-100 text-blue-900'}`}
-                    >
-                        {isRearrangeMode ? 'Done' : activeTag}
-                    </button>
-
-                    <button 
-                        onClick={() => { setSelectedDate(days[0].id); setEditingTask(null); setModalVisible(true); }}
-                        className="absolute bottom-8 right-8 w-16 h-16 bg-gray-900 rounded-2xl flex items-center justify-center text-white shadow-floating z-30 active:scale-90 transition-transform"
-                    >
-                        <Icon name="plus" size={32} />
-                    </button>
-
-                    <TaskModal 
-                        visible={modalVisible} 
-                        onClose={() => setModalVisible(false)} 
-                        onSave={handleSave} 
-                        onDelete={(id) => setTasks(prev => prev.filter(t => t.id !== id))}
-                        taskToEdit={editingTask}
-                        defaultStartDate={selectedDate}
-                    />
+                    <button onClick={() => isRearrangeMode ? setIsRearrangeMode(false) : setActiveTag(tag => tag === 'Work' ? 'Personal' : 'Work')} onContextMenu={(e) => { e.preventDefault(); setIsRearrangeMode(true); }} className={`absolute bottom-8 left-8 px-6 py-3 rounded-2xl font-bold shadow-floating transition-colors z-30 ${isRearrangeMode ? 'bg-purple-600 text-white' : 'bg-blue-100 text-blue-900'}`}>{isRearrangeMode ? 'Done' : activeTag}</button>
+                    <button onClick={() => { setSelectedDate(days[0].id); setEditingTask(null); setModalVisible(true); }} className="absolute bottom-8 right-8 w-16 h-16 bg-gray-900 rounded-2xl flex items-center justify-center text-white shadow-floating z-30 active:scale-90 transition-transform"><Icon name="plus" size={32} /></button>
+                    <TaskModal visible={modalVisible} onClose={() => setModalVisible(false)} onSave={handleSave} onDelete={(id) => setTasks(prev => prev.filter(t => t.id !== id))} taskToEdit={editingTask} defaultStartDate={selectedDate} />
                 </div>
             );
         };
-
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
