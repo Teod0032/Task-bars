@@ -5,10 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>My Tasks</title>
     
-    <link rel="manifest" href="./manifest.json">
-    <meta name="theme-color" content="#ffffff">
     <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#ffffff">
     
+    <link rel="manifest" id="my-manifest">
+
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -16,29 +19,38 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <style>
-        body { background-color: #ffffff; -webkit-tap-highlight-color: transparent; }
+        body { background-color: #ffffff; -webkit-tap-highlight-color: transparent; user-select: none; }
+        /* Hide scrollbar but allow scrolling */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .task-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        .shadow-elevation { box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); }
-        .shadow-floating { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js')
-                .then(() => console.log('Service Worker Registered'))
-                .catch((err) => console.log('SW Failed', err));
-        }
+        const manifest = {
+            "name": "My Tasks",
+            "short_name": "Tasks",
+            "start_url": ".",
+            "display": "standalone",
+            "background_color": "#ffffff",
+            "theme_color": "#ffffff",
+            "icons": [{ 
+                "src": "https://cdn-icons-png.flaticon.com/512/9329/9329310.png", 
+                "sizes": "512x512", 
+                "type": "image/png" 
+            }]
+        };
+        const blob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+        document.getElementById('my-manifest').setAttribute('href', URL.createObjectURL(blob));
     </script>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
         const Icon = ({ name, size = 24, color = "currentColor" }) => {
-            useEffect(() => { lucide.createIcons(); }, [name]);
+            useEffect(() => { if(window.lucide) window.lucide.createIcons(); }, [name]);
             return <i data-lucide={name} style={{ width: size, height: size, color: color }}></i>;
         };
 
@@ -63,7 +75,7 @@
             const width = Math.max((layout.gridSpan || 1) * COLUMN_WIDTH - 16, 40);
 
             return (
-                <div onClick={() => onClick(task)} className={`absolute task-card rounded-xl border-l-4 flex items-center justify-between shadow-elevation overflow-hidden cursor-pointer select-none ${task.completed ? 'opacity-60' : 'opacity-100'}`} style={{ top: `${top}px`, left: `${left}px`, width: `${width}px`, height: '55px', backgroundColor: colors.bg, borderColor: colors.border, zIndex: 10 }}>
+                <div onClick={() => onClick(task)} className={`absolute task-card rounded-xl border-l-4 flex items-center justify-between shadow-sm overflow-hidden cursor-pointer ${task.completed ? 'opacity-60' : 'opacity-100'}`} style={{ top: `${top}px`, left: `${left}px`, width: `${width}px`, height: '55px', backgroundColor: colors.bg, borderColor: colors.border, zIndex: 10 }}>
                     <div className="flex items-center px-3 w-full h-full">
                         {!isRearrangeMode && <div onClick={(e) => { e.stopPropagation(); onToggle(task); }} className="w-12 h-7 rounded-full bg-white mr-3 shadow-sm flex-shrink-0"></div>}
                         <span className="font-semibold text-base truncate" style={{ color: colors.text }}>{task.title}</span>
@@ -86,11 +98,8 @@
             const [end, setEnd] = useState('');
 
             useEffect(() => {
-                if (taskToEdit) {
-                    setTitle(taskToEdit.title); setColor(taskToEdit.color || 'level3'); setStart(taskToEdit.startDate.split('T')[0]); setEnd(taskToEdit.endDate.split('T')[0]);
-                } else {
-                    setTitle(''); setColor('level3'); const d = defaultStartDate || new Date().toISOString().split('T')[0]; setStart(d); setEnd(d);
-                }
+                if (taskToEdit) { setTitle(taskToEdit.title); setColor(taskToEdit.color || 'level3'); setStart(taskToEdit.startDate.split('T')[0]); setEnd(taskToEdit.endDate.split('T')[0]); }
+                else { setTitle(''); setColor('level3'); const d = defaultStartDate || new Date().toISOString().split('T')[0]; setStart(d); setEnd(d); }
             }, [visible, taskToEdit, defaultStartDate]);
 
             const handleSave = () => {
@@ -120,16 +129,15 @@
             const [isRearrangeMode, setIsRearrangeMode] = useState(false);
             const [visibleDays, setVisibleDays] = useState(60);
             const [selectedDate, setSelectedDate] = useState('');
+            
+            // --- NEW: Scroll Reference ---
+            const scrollRef = useRef(null);
 
             useEffect(() => { const saved = localStorage.getItem('my-tasks'); if (saved) setTasks(JSON.parse(saved)); }, []);
             useEffect(() => { localStorage.setItem('my-tasks', JSON.stringify(tasks)); }, [tasks]);
 
             const today = useMemo(() => new Date(), []);
-            const days = useMemo(() => Array.from({ length: visibleDays }, (_, i) => {
-                const date = new Date(today); date.setDate(today.getDate() + i);
-                return { id: date.toISOString().split('T')[0], label: i === 0 ? 'Now' : date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), dateObj: date };
-            }), [visibleDays]);
-
+            const days = useMemo(() => Array.from({ length: visibleDays }, (_, i) => { const date = new Date(today); date.setDate(today.getDate() + i); return { id: date.toISOString().split('T')[0], label: i === 0 ? 'Now' : date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), dateObj: date }; }), [visibleDays]);
             const normalizeDate = (d) => { const date = new Date(d); return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())); };
             const getDayDiff = (d1, d2) => Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
             const getTaskPriority = (color) => COLOR_LEVELS[color]?.priority || 99;
@@ -151,11 +159,7 @@
                         let col = getDayDiff(viewStart, start) + 1; if(start < viewStart) col = -getDayDiff(start, viewStart) + 1;
                         const span = Math.max(1, getDayDiff(start, end) + 1);
                         let row = 0;
-                        while(true) {
-                            if(!groupRows[row]) { groupRows[row] = []; break; }
-                            const collision = groupRows[row].some(slot => col < slot.end && (col + span) > slot.start);
-                            if(!collision) break; row++;
-                        }
+                        while(true) { if(!groupRows[row]) { groupRows[row] = []; break; } const collision = groupRows[row].some(slot => col < slot.end && (col + span) > slot.start); if(!collision) break; row++; }
                         if(!groupRows[row]) groupRows[row] = []; groupRows[row].push({ start: col, end: col + span });
                         const finalRow = globalOffset + row;
                         const sIdx = Math.max(0, col - 1); const eIdx = Math.min(days.length, col - 1 + span);
@@ -169,10 +173,7 @@
 
             const overdueTasks = useMemo(() => { const now = normalizeDate(new Date()); return tasks.filter(t => t.tag === activeTag && normalizeDate(t.endDate) < now && !t.completed); }, [tasks, activeTag]);
 
-            const handleSave = (data) => {
-                const newTask = { id: Date.now().toString(), ...data, completed: false, tag: activeTag, manualSortIndex: Date.now() };
-                if(editingTask) setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...data } : t)); else setTasks(prev => [...prev, newTask]);
-            };
+            const handleSave = (data) => { const newTask = { id: Date.now().toString(), ...data, completed: false, tag: activeTag, manualSortIndex: Date.now() }; if(editingTask) setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...data } : t)); else setTasks(prev => [...prev, newTask]); };
             const handleToggle = (task) => { if(confirm("Complete this task?")) setTasks(prev => prev.filter(t => t.id !== task.id)); };
             const handleMove = (task, dir) => {
                 const relevant = tasks.filter(t => t.tag === activeTag).sort((a,b) => { const pA = getTaskPriority(a.color); const pB = getTaskPriority(b.color); return pA === pB ? (a.manualSortIndex||0) - (b.manualSortIndex||0) : pA - pB; });
@@ -183,10 +184,21 @@
                 setTasks(prev => prev.map(t => { if(t.id === task.id) return { ...t, color: nColor, manualSortIndex: nIdx }; if(t.id === neighbor.id) return { ...t, color: tColor, manualSortIndex: tIdx }; return t; }));
             };
 
+            // --- NEW: Reset Scroll Function ---
+            const resetScroll = () => {
+                if (scrollRef.current) {
+                    scrollRef.current.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
+                }
+            };
+
             return (
                 <div className="flex flex-col h-screen bg-white">
                     <div className="px-6 pb-4 pt-10 border-b border-gray-100 flex justify-between items-end bg-white sticky top-0 z-40">
-                        <div><h1 className="text-2xl font-bold text-gray-900">Today</h1><p className="text-gray-400 font-medium text-sm">{today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric'})}</p></div>
+                        {/* UPDATED: Clickable Today Header */}
+                        <div onClick={resetScroll} className="cursor-pointer active:opacity-50 transition-opacity">
+                            <h1 className="text-2xl font-bold text-gray-900">Today</h1>
+                            <p className="text-gray-400 font-medium text-sm">{today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric'})}</p>
+                        </div>
                     </div>
                     {overdueTasks.length > 0 && (
                         <div className="bg-red-50 border-b border-red-100 p-4">
@@ -194,7 +206,8 @@
                             <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">{overdueTasks.map(t => ( <div key={t.id} onClick={() => { setEditingTask(t); setModalVisible(true); }} className="flex-shrink-0 bg-white border border-red-200 rounded-lg p-3 w-64 shadow-sm flex items-center gap-3"><div onClick={(e) => { e.stopPropagation(); handleToggle(t); }} className="w-5 h-5 rounded-full border-2 border-red-500"></div><div><p className="font-semibold text-red-900 truncate w-40">{t.title}</p><p className="text-xs text-red-500 font-bold">{t.endDate.split('T')[0]}</p></div></div> ))}</div>
                         </div>
                     )}
-                    <div className="flex-1 overflow-x-auto overflow-y-hidden relative no-scrollbar" onScroll={(e) => { if(e.target.scrollWidth - e.target.scrollLeft - e.target.clientWidth < 400) setVisibleDays(prev => prev + 10); }}>
+                    {/* UPDATED: Added ref={scrollRef} and changed overflow-y-hidden to auto */}
+                    <div ref={scrollRef} className="flex-1 overflow-auto relative no-scrollbar" onScroll={(e) => { if(e.target.scrollWidth - e.target.scrollLeft - e.target.clientWidth < 400) setVisibleDays(prev => prev + 10); }}>
                         <div className="flex h-full relative" style={{ width: days.length * COLUMN_WIDTH }}>
                             {days.map((day, i) => (
                                 <div key={day.id} className={`flex-shrink-0 border-r border-gray-100 h-full relative ${i%2===0 ? 'bg-gray-50/50' : 'bg-white'}`} style={{ width: COLUMN_WIDTH }}>
@@ -205,8 +218,8 @@
                             {layoutTasks.positioned.map(task => { if(task.gridCol + task.gridSpan < 1) return null; return ( <TaskBar key={task.id} task={task} layout={task} onToggle={handleToggle} onClick={(t) => { setEditingTask(t); setModalVisible(true); }} isRearrangeMode={isRearrangeMode} onMove={handleMove} /> ); })}
                         </div>
                     </div>
-                    <button onClick={() => isRearrangeMode ? setIsRearrangeMode(false) : setActiveTag(tag => tag === 'Work' ? 'Personal' : 'Work')} onContextMenu={(e) => { e.preventDefault(); setIsRearrangeMode(true); }} className={`absolute bottom-8 left-8 px-6 py-3 rounded-2xl font-bold shadow-floating transition-colors z-30 ${isRearrangeMode ? 'bg-purple-600 text-white' : 'bg-blue-100 text-blue-900'}`}>{isRearrangeMode ? 'Done' : activeTag}</button>
-                    <button onClick={() => { setSelectedDate(days[0].id); setEditingTask(null); setModalVisible(true); }} className="absolute bottom-8 right-8 w-16 h-16 bg-gray-900 rounded-2xl flex items-center justify-center text-white shadow-floating z-30 active:scale-90 transition-transform"><Icon name="plus" size={32} /></button>
+                    <button onClick={() => isRearrangeMode ? setIsRearrangeMode(false) : setActiveTag(tag => tag === 'Work' ? 'Personal' : 'Work')} onContextMenu={(e) => { e.preventDefault(); setIsRearrangeMode(true); }} className={`absolute bottom-8 left-8 px-6 py-3 rounded-2xl font-bold shadow-sm transition-colors z-30 ${isRearrangeMode ? 'bg-purple-600 text-white' : 'bg-blue-100 text-blue-900'}`}>{isRearrangeMode ? 'Done' : activeTag}</button>
+                    <button onClick={() => { setSelectedDate(days[0].id); setEditingTask(null); setModalVisible(true); }} className="absolute bottom-8 right-8 w-16 h-16 bg-gray-900 rounded-2xl flex items-center justify-center text-white shadow-sm z-30 active:scale-90 transition-transform"><Icon name="plus" size={32} /></button>
                     <TaskModal visible={modalVisible} onClose={() => setModalVisible(false)} onSave={handleSave} onDelete={(id) => setTasks(prev => prev.filter(t => t.id !== id))} taskToEdit={editingTask} defaultStartDate={selectedDate} />
                 </div>
             );
